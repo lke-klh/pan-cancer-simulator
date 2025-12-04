@@ -7,27 +7,56 @@ server <- function(input, output, session) {
   
   output$organ_title <- renderText({
     req(input$selected_organ)
-    paste("Selected cancer site:", input$selected_organ)
+    paste(input$selected_organ)
   })
   
-  # Intro text on the left
   output$organ_intro <- renderUI({
     req(input$selected_organ)
-    
     text <- switch(
       input$selected_organ,
-      "Thyroid"            = "Thyroid cancer arises from the thyroid gland...",
-      "Bronchus and Lung"  = "Lung cancer is commonly divided into small cell and non-small cell types...",
-      "Breast"             = "Breast cancer is one of the most common malignancies among women...",
-      "Liver"              = "Primary liver cancer often refers to hepatocellular carcinoma...",
-      "Kidney"             = "Kidney cancer includes clear cell, papillary, and other histologic subtypes...",
-      "Colon"              = "Colorectal cancer typically develops from adenomatous polyps...",
-      "Selected site."
-    )
-    
-    tagList(
-      p(text),
-      p(em("You can replace this text with any detailed description later."))
+      "Thyroid" = tagList(
+        p(strong(em("Thyroid cancer"))),
+        p("Thyroid cancer arises from thyroid cells in the neck. 
+          Most tumors are slow-growing and highly curable, often found as a painless nodule. 
+          Prognosis is generally excellent, especially for younger patients and early-stage disease.")
+      ),
+      
+      "Bronchus and Lung" = tagList(
+        p(strong(em("Lung cancer"))),
+        p("Lung cancer develops in the bronchi and lung tissue. 
+          Smoking is the main risk factor, but air pollution and genetics also contribute. 
+          It often presents with persistent cough, shortness of breath, chest pain, or weight loss.")
+      ),
+      
+      "Breast" = tagList(
+        p(strong(em("Breast cancer"))),
+        p("Breast cancer begins in breast ducts or lobules. 
+          It is common, especially among women, and may appear as a lump, skin change, or nipple discharge. 
+          Hormone receptor and HER2 status guide targeted and systemic therapies.")
+      ),
+      
+      "Liver" = tagList(
+        p(strong(em("Primary liver cancer"))),
+        p("Primary liver cancer, often hepatocellular carcinoma, 
+        usually arises in chronically damaged livers from hepatitis B, hepatitis C, or cirrhosis. 
+          Symptoms can be subtle, such as fatigue, abdominal discomfort, or weight loss, 
+          making surveillance in high-risk groups important.")
+      ),
+      
+      "Kidney" = tagList(
+        p(strong(em("Kidney cancer"))),
+        p("Kidney cancer, typically renal cell carcinoma, forms in the renal cortex. 
+          It may be discovered incidentally or present with blood in urine, flank pain, or a mass. 
+          Smoking, obesity, hypertension, and some hereditary syndromes increase risk.")
+      ),
+
+      "Colon" = tagList(
+        p(strong(em("Colorectal cancer"))),
+        p("Colorectal cancer usually develops from polyps in the colon or rectum over years. 
+          Screening colonoscopy can detect and remove precancerous lesions. 
+          Symptoms include blood in stool, altered bowel habits, anemia, or abdominal pain, 
+          though early disease may be asymptomatic.")
+      )
     )
   })
   
@@ -36,14 +65,14 @@ server <- function(input, output, session) {
     plot(1:10, rnorm(10), main = paste("Placeholder plot for", input$selected_organ))
   })
   
-  # Placeholder summary stats
+  # Placeholder
   output$organ_stats <- renderPrint({
     req(input$selected_organ)
     list(
       cancer_site = input$selected_organ,
-      n_patients  = 1234,
-      median_age  = 65,
-      notes       = "Replace this list with real summary stats from your backend."
+      n_patients = 1234,
+      median_age = 65,
+      notes = "hey"
     )
   })
 }

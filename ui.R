@@ -2,72 +2,125 @@ library(shiny)
 
 simulationSidebar <- function() {
   sidebarPanel(
-    h4("Simulation Inputs"),
-    
-    selectInput(
-      inputId = "gender",
-      label   = "Gender",
-      choices = c("Female", "Male", "Non-binary", "Other"),
-      selected = "Female"
-    ),
-    
-    selectInput(
-      inputId = "race",
-      label   = "Race",
-      choices = c("White", "Black", "Asian", "Hispanic", "Other"),
-      selected = "White"
-    ),
-    
-    sliderInput(
-      inputId = "age",
-      label   = "Age",
-      min     = 0,
-      max     = 100,
-      value   = 50
-    ),
-    
-    selectizeInput(
-      inputId  = "genes",
-      label    = "Select gene(s)",
-      choices  = c("TP53", "BRCA1", "BRCA2", "EGFR", "KRAS", "PIK3CA"),
-      selected = "TP53",
-      multiple = TRUE
-    ),
-    
-    sliderInput(
-      inputId = "gene_expr",
-      label   = "Gene expression level",
-      min     = 0,
-      max     = 10,
-      value   = 5,
-      step    = 0.1
-    ),
-    
-    selectInput(
-      inputId = "cancer_type",
-      label   = "Cancer type",
-      choices = c("Thyroid", "Liver", "Kidney", "Breast", "Colon", "Bronchus and Lung"),
-      selected = "Thyroid"
-    ),
-    
-    br(),
-    actionButton(
-      inputId = "run_sim",
-      label   = "Run Simulation"
+    width = 4,
+    div(
+      class = "panel-with-header",
+      div(
+        class = "panel-header",
+        h4("Simulation Inputs")
+      ),
+      div(
+        class = "panel-body",
+        tags$small("Configure demographic and genomic parameters for the simulation."),
+        tags$hr(),
+        
+        tags$div(
+          class = "sidebar-section",
+          tags$h4("Tumor site"),
+          selectInput(
+            inputId = "cancer_type",
+            label   = "Cancer type",
+            choices = c("Thyroid", "Liver", "Kidney", "Breast", "Colon", "Bronchus and Lung"),
+            selected = "Thyroid"
+          )
+        ),
+        
+        tags$hr(),
+        
+        tags$div(
+          class = "sidebar-section",
+          tags$h4("Demographics"),
+          selectInput(
+            inputId = "sex",
+            label = "Sex",
+            choices = c("Female", "Male"),
+            selected = "Female"
+          ),
+          
+          selectInput(
+            inputId = "race",
+            label = "Race",
+            choices = c("White", "Black", "Asian", "Hispanic", "Other"),
+            selected = "White"
+          ),
+          
+          sliderInput(
+            inputId = "age",
+            label = "Age",
+            min = 18,
+            max = 99,
+            value = 55
+          )
+        ),
+        
+        tags$hr(),
+        
+        tags$div(
+          class = "sidebar-section",
+          tags$h4("Genomics"),
+          selectizeInput(
+            inputId  = "genes",
+            label = "Gene",
+            choices = c("TP53", "BRCA1", "BRCA2", "EGFR", "KRAS", "PIK3CA"),
+            selected = "TP53",
+            multiple = FALSE
+          ),
+          sliderInput(
+            inputId = "gene_expr",
+            label = "Gene expression level (exponential)",
+            min = -4,
+            max = 4,
+            value = 0,
+            step = 0.5
+          )
+        ),
+        
+        div(
+          class = "sidebar-actions",
+          actionButton(
+            inputId = "run_sim",
+            label   = "Run Simulation",
+            width   = "100%"
+          )
+        )
+      )
     )
   )
 }
 
 ui <- tagList(
-  # Global CSS (applies to all pages)
+  # Global CSS
   tags$head(
     tags$style(HTML("
       /* Spacing */
       .container-fluid {
-        max-width: 1200px;
+        max-width: 1500px;
+      }
+      
+      /* NavBar */
+      .navbar.navbar-default {
+        background-color: #7A658A;
+        border-color: #89709E;
+      }
+      
+      .navbar-default .navbar-brand,
+      .navbar-default .navbar-nav > li > a {
+        color: #ffffff;
+      }
+      
+      .navbar-default .navbar-brand:hover,
+      .navbar-default .navbar-nav > li > a:hover,
+      .navbar-default .navbar-nav > li > a:focus {
+        color: #ffcc66;
+      }
+      
+      /* body */
+      body {
+        font-family: 'Verdana', Arial, sans-serif;
+        font-size: 14px;
       }
 
-      /* Body container with image and hover overlays */
+      /* human body container */
       #body-wrapper {
         position: relative;
         max-width: 110px;
@@ -86,7 +139,6 @@ ui <- tagList(
         left: 0;
         width: 100%;
         height: 100%;
-        pointer-events: none;
       }
       
       #body-svg-overlay svg {
@@ -135,37 +187,166 @@ ui <- tagList(
         font-size: 12px;
         color: rgb(20, 20, 20);
       }
+
+      /* Panel */
+      .panel-with-header {
+        border: 1px solid #e3e3e3;
+        border-radius: 4px;
+        margin-bottom: 15px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      }
+
+      .panel-header {
+        background-color: #7A658A;
+        color: white;
+        padding: 12px 15px;
+        margin: 0;
+      }
+
+      .panel-header h4 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+        color: white;
+      }
+
+      .panel-body {
+        background-color: #f9f9f9;
+        padding: 15px;
+      }
+
+      /* Sidebar styling */
+      .sidebar-panel {
+        padding: 0 !important;
+      }
+      
+      .sidebar-section h4 {
+        font-size: 14px;
+        font-weight: 600;
+        margin-top: 6px;
+        margin-bottom: 6px;
+        color: #333;
+      }
+      
+      .sidebar-section label,
+      .panel-body label {
+        font-size: 12px;
+        font-weight: 550;
+      }
+      
+      .panel-body hr {
+        margin: 0px 0;
+        border-top: 1px solid #AE8DC7;
+      }
+      
+      .panel-body small {
+        color: #666;
+        display: block;
+        margin-bottom: 8px;
+      }
+      
+      /* Sidebar sections */
+      .sidebar-section {
+        padding-top: 4px;
+        margin-bottom: 6px;
+      }
+      
+      /* Action buttons */
+      .sidebar-actions {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #ddd;
+      }
+      
+      .sidebar-actions .btn,
+      .sidebar-section .btn {
+        width: 100%;
+        font-weight: 400;
+        margin-top: 6px;
+        border-radius: 3px;
+      }
+      
+      /* Slider Fill */
+      .irs--shiny .irs-bar,
+      .irs--shiny .irs-handle,
+      .irs--shiny .irs-from,
+      .irs--shiny .irs-to,
+      .irs--shiny .irs-single {
+        background: #7A658A;
+      }
+      
+      .irs--shiny .irs-bar {
+        background: #7A658A;
+        border-top: 1px solid #7A658A;
+        border-bottom: 1px solid #7A658A;
+      }
+      
+      .irs--shiny .irs-from:before,
+      .irs--shiny .irs-to:before,
+      .irs--shiny .irs-single:before {
+        border-top-color: #7A658A;
+      }
+      
+      /* Button styling */
+      .sidebar-actions .btn-default,
+      .sidebar-section .btn-default {
+        background-color: #7A658A;
+        border-color: #7A658A;
+        color: #ffffff;
+      }
+      
+      .sidebar-actions .btn-default:hover,
+      .sidebar-actions .btn-default:focus,
+      .sidebar-section .btn-default:hover,
+      .sidebar-section .btn-default:focus {
+        background-color: #614d6e;
+        border-color: #614d6e;
+        color: #ffffff;
+      }
+      
+      .well {
+        background-color: transparent;
+        border: none;
+        box-shadow: none;
+        padding: 0; 
+      }
     "))
   ),
   
   navbarPage(
     title = "The Pan-Cancer Demographic-Genomic Simulator",
     
-    # ---- Body Map page (no sidebar) ----
+    # Body Map Page
     tabPanel(
-      title = "Body Map",
+      title = "🩻 Body Map",
       fluidPage(
         h3("Body Map"),
-        p("Hover over different regions of the body to highlight them."),
+        p("Hover over and click different regions to explore different cancers in their demographics and TOP20 gene heatmap."),
         
-        div(
-          id = "body-wrapper",
-          tags$img(
-            id   = "body-image",
-            src  = "human_body.svg",
-            alt  = "Human body diagram",
-            class = "img-responsive"
-          ),
-          
-          # SVG overlay
-          tags$div(
-            id = "body-svg-overlay",
-            HTML('
+        fluidRow(
+          # Body Map
+          column(
+            width = 4,
+            div(
+              id = "body-wrapper",
+              tags$img(
+                id   = "body-image",
+                src  = "human_body.svg",
+                alt  = "Human body diagram",
+                class = "img-responsive"
+              ),
+              
+              # SVG overlay
+              tags$div(
+                id = "body-svg-overlay",
+                HTML('
               <svg viewBox="0 0 226 917" xmlns="http://www.w3.org/2000/svg">
-                <!-- Thyroid (neck area - small oval) -->
+                <!-- Thyroid -->
                 <ellipse class="organ-path" data-organ="Thyroid" id="organ-thyroid"
                   cx="113" cy="150" rx="15" ry="10" 
-                  fill="#9ECAE1" stroke="#7AA3C1" stroke-width="2"/>
+                  fill="#9ECAE1" stroke="#7AA3C1" stroke-width="2"
+                  onclick="Shiny.setInputValue(\'selected_organ\', \'Thyroid\', {priority: \'event\'})" />
                   
                 <!-- Bronchus and Lung -->
                 <path class="organ-path" data-organ="Bronchus and Lung" id="organ-lung"
@@ -178,12 +359,14 @@ ui <- tagList(
                      C 79,278 82,276 86,272
                      C 92,267 99,261 105,257
                      C 110,254 108,251 105,245 Z"
-                  fill="#BCBD22" stroke="#9A9B1C" stroke-width="2"/>
+                  fill="#BCBD22" stroke="#9A9B1C" stroke-width="2"
+                  onclick="Shiny.setInputValue(\'selected_organ\', \'Bronchus and Lung\', {priority: \'event\'})" />
 
                 <!-- Breast -->
                 <ellipse class="organ-path" data-organ="Breast" id="organ-breast"
                   cx="150" cy="240" rx="30" ry="22" 
-                  fill="#DD3497" stroke="#B32878" stroke-width="2"/>
+                  fill="#DD3497" stroke="#B32878" stroke-width="2"
+                  onclick="Shiny.setInputValue(\'selected_organ\', \'Breast\', {priority: \'event\'})" />
                 
                 <!-- Liver -->
                 <path class="organ-path" data-organ="Liver" id="organ-liver"
@@ -199,48 +382,88 @@ ui <- tagList(
                      C 84,323 79,322 76,319
                      C 74,317 73,314 74,311
                      L 83,305 Z"
-                  fill="#E7969C" stroke="#C7767C" stroke-width="2"/>
+                  fill="#E7969C" stroke="#C7767C" stroke-width="2"
+                  onclick="Shiny.setInputValue(\'selected_organ\', \'Liver\', {priority: \'event\'})" />
                 
                <!-- Kidney -->
                 <ellipse class="organ-path" data-organ="Kidney" id="organ-kidney-left"
                   cx="80" cy="340" rx="12" ry="18" 
-                  fill="#CE6DBD" stroke="#AE4D9D" stroke-width="2"/>
+                  fill="#CE6DBD" stroke="#AE4D9D" stroke-width="2"
+                  onclick="Shiny.setInputValue(\'selected_organ\', \'Kidney\', {priority: \'event\'})" />
                 <ellipse class="organ-path" data-organ="Kidney" id="organ-kidney-right"
                   cx="146" cy="340" rx="12" ry="18" 
-                  fill="#CE6DBD" stroke="#AE4D9D" stroke-width="2"/>
+                  fill="#CE6DBD" stroke="#AE4D9D" stroke-width="2"
+                  onclick="Shiny.setInputValue(\'selected_organ\', \'Kidney\', {priority: \'event\'})" />
                 
                 <!-- Colon -->
                 <path class="organ-path" data-organ="Colon" id="organ-colon"
-                  d="M 85,370 L 85,430 Q 85,450 113,450 Q 141,450 141,430 L 141,370 Q 141,360 113,360 Q 85,360 85,370 Z"
-                  fill="#17BECF" stroke="#129EAF" stroke-width="2"/>
+                  d="M 85,370 
+                  L 85,430 
+                  Q 85,450 113,450 
+                  Q 141,450 141,430 
+                  L 141,370 
+                  Q 141,360 113,360 
+                  Q 85,360 85,370 
+                  Z"
+                  fill="#17BECF" stroke="#129EAF" stroke-width="2"
+                  onclick="Shiny.setInputValue(\'selected_organ\', \'Colon\', {priority: \'event\'})" />
               </svg>
             ')
-          )
-        ),
-        br(),
-        conditionalPanel(
-          condition = "input.selected_organ != null && input.selected_organ != ''",
-          fluidRow(
-            column(
-              width = 4,
-              wellPanel(
-                h4(textOutput("organ_title")),
-                uiOutput("organ_intro")
+              )
+            )
+          ),
+          
+          # body map plots and stats
+          column(
+            width = 8,
+            
+            # when nothing is selected 
+            conditionalPanel(
+              condition = "input.selected_organ == null || input.selected_organ == ''",
+              div(
+                class = "panel-with-header",
+                div(class = "panel-header", h4("Body Map Explorer")),
+                div(
+                  class = "panel-body",
+                  p(em("Click on a highlighted region in the body to explore more!"))
+                )
               )
             ),
             
-            column(
-              width = 8,
-              wellPanel(
-                h4("Selected Cancer: Plots & Summary"),
-                plotOutput("organ_plot"),
-                br(),
-                h5("Summary statistics"),
-                verbatimTextOutput("organ_stats")
+            # when an organ is selected
+            conditionalPanel(
+              condition = "input.selected_organ != null && input.selected_organ != ''",
+              
+              fluidRow(
+                column(
+                  width = 12,
+                  div(
+                    class = "panel-with-header",
+                    div(class = "panel-header", h4(textOutput("organ_title", inline = TRUE))),
+                    div(class = "panel-body", uiOutput("organ_intro"))
+                  )
+                )
+              ),
+              
+              fluidRow(
+                column(
+                  width = 12,
+                  div(
+                    class = "panel-with-header",
+                    div(class = "panel-header", h4("Analysis Results")),
+                    div(
+                      class = "panel-body",
+                      plotOutput("organ_plot"),
+                      br(),
+                      h5("Summary statistics"),
+                      verbatimTextOutput("organ_stats")
+                    )
+                  )
+                )
               )
             )
           )
-        ),
+        )
       )
     ),
     
@@ -252,13 +475,11 @@ ui <- tagList(
         mainPanel(
           tabsetPanel(
             id = "surv_tabs",
-            
             tabPanel(
               title = "Survival Analysis",
               h3("Survival Analysis Plot"),
               plotOutput("surv_plot")
             ),
-            
             tabPanel(
               title = "Summary Stats",
               h3("Summary Statistics"),
