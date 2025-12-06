@@ -28,7 +28,7 @@ deGeneSidebar <- function() {
             inputId = "cancer_type_de",
             label = "Cancer type",
             choices = c("Thyroid", "Liver", "Kidney", "Breast", "Colon", "Bronchus and Lung"),
-            selected = "Thyroid"
+            selected = "Bronchus and Lung"
           )
         ),
         
@@ -42,7 +42,7 @@ deGeneSidebar <- function() {
             label = "Sample size",
             min = 5,
             max = 25,
-            value = 10,
+            value = 20,
             step = 1
           )
         ),
@@ -72,7 +72,7 @@ deGeneSidebar <- function() {
             label = "Dispersion (phi ϕ)",
             min = 0.1,
             max = 0.5,
-            value = 0.3,
+            value = 0.2,
             step = 0.1
           )
         ),
@@ -207,7 +207,7 @@ downloadSidebar <- function() {
             inputId = "cancer_type_dl",
             label = "Cancer type",
             choices = c("Thyroid", "Liver", "Kidney", "Breast", "Colon", "Bronchus and Lung"),
-            selected = "Thyroid"
+            selected = "Bronchus and Lung"
           )
         )
       )
@@ -455,11 +455,16 @@ ui <- tagList(
         bottom: 0;
         left: 0;
       }
+      
+      .shiny-progress .progress-bar,
+      .progress-bar {
+        background-color: #7A658A;
+      }
     "))
   ),
   
   navbarPage(
-    title = "The Pan-Cancer Demographic-Genomic Simulator",
+    title = "OncoExplorR",
     
     # Body Map Page
     tabPanel(
@@ -656,8 +661,7 @@ ui <- tagList(
         deGeneSidebar(),
         mainPanel = mainPanel(
           width = 8,
-          h3("DE Genes Detection Benchmark"),
-          plotOutput("de_genes_detection")
+          uiOutput("de_plots_ui")
         )
       )
     ),
@@ -718,7 +722,7 @@ ui <- tagList(
     
     footer = tags$div(
       class = "app-footer",
-      p("© 2025 Pan-Cancer Simulator | Developed with R Shiny & Plotly | Liuhan Ke, Ziyi Ou, Hailin Zhang")
+      p("© 2025 OncoExplorR | Developed with R Shiny & Plotly | Liuhan Ke, Ziyi Ou, Hailin Zhang")
     )
   )
 )

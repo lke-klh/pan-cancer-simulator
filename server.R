@@ -5,6 +5,89 @@ library(plotly)
 library(pheatmap)
 library(survival)
 library(randomForestSRC)
+library(edgeR)
+library(limma)
+library(DESeq2)
+library(pROC)
+
+deg_simulation <- function(data, N, pct,
+                           logFC_vec = c(0.5, 1.0, 1.5),
+                           phi = 0.2,
+                           seed = 1234) {
+  set.seed(seed)
+  
+  count <- as.matrix(data)
+  count <- 2^count - 1
+  count[count < 0] <- 0
+  count <- round(count)
+  
+  G <- nrow(count)
+  if (G == 0) stop("No genes in input data.")
+  
+  gene_names <- rownames(count)
+  base_mu <- rowMeans(count)
+  base_mu[base_mu <= 0] <- 0.1
+  
+  size_g <- 1 / phi
+  
+  n_DE <- round(G * pct)
+  DE_idx <- sample(seq_len(G), n_DE, replace = FALSE)
+  
+  n_up  <- ceiling(n_DE / 2)
+  DE_up_idx   <- DE_idx[seq_len(n_up)]
+  DE_down_idx <- setdiff(DE_idx, DE_up_idx)
+  
+  DE_list <- gene_names[DE_idx]
+  
+  direction <- integer(G)
+  direction[DE_up_idx]   <- 1
+  direction[DE_down_idx] <- -1
+  names(direction) <- gene_names
+  
+  J <- 2 * N
+  group <- factor(c(rep("healthy", N), rep("patient", N)))
+  sample_names <- c(
+    paste0("healthy", seq_len(N)),
+    paste0("patient", seq_len(N))
+  )
+  
+  expr_data <- vector("list", length(logFC_vec))
+  names(expr_data) <- paste0("logFC_", logFC_vec)
+  
+  for (lfc in logFC_vec) {
+    nm <- paste0("logFC_", lfc)
+    fc <- 2^lfc
+    
+    muA <- base_mu
+    
+    muB <- base_mu
+    muB[DE_up_idx] <- muA[DE_up_idx] * fc
+    muB[DE_down_idx] <- muA[DE_down_idx] / fc
+    
+    sim_counts <- matrix(0L, nrow = G, ncol = J)
+    rownames(sim_counts) <- gene_names
+    colnames(sim_counts) <- sample_names
+    
+    for (g in seq_len(G)) {
+      sim_counts[g, 1:N] <- rnbinom(N, mu = muA[g], size = size_g)
+      sim_counts[g, (N + 1):(2 * N)] <- rnbinom(N, mu = muB[g], size = size_g)
+    }
+    
+    expr_data[[nm]] <- list(
+      counts = sim_counts,
+      log2expr = log2(sim_counts + 1),
+      group = group,
+      samples = sample_names
+    )
+  }
+  list(
+    expr_data = expr_data,
+    DE_list = DE_list,
+    DE_up = gene_names[DE_up_idx],
+    DE_down = gene_names[DE_down_idx],
+    direction = direction
+  )
+}
 
 simulate_gene_effect <- function(
     rsf_fit,
@@ -208,7 +291,7 @@ server <- function(input, output, session) {
       cluster_rows = TRUE,
       cluster_cols = FALSE,
       scale = "none",
-      color = colorRampPalette(c("steelblue", "white", "darkred"))(50),
+      color = colorRampPalette(c("#2553A8", "white", "#A8253F"))(50),
       main = paste0("Top ", n_genes, " Variable Genes (from 50 Random Tumor Samples)"),
       show_colnames = FALSE,
       show_rownames = TRUE,
@@ -224,9 +307,9 @@ server <- function(input, output, session) {
     req(df)
     
     race_df <- df %>%
-      count(race) %>%
-      mutate(race = reorder(race, n, decreasing = TRUE))
-    
+      dplyr::count(race) %>%
+      dplyr::mutate(race = reorder(race, n, decreasing = TRUE))
+      
     plot_ly(race_df, 
             x = ~race, 
             y = ~n, 
@@ -252,11 +335,12 @@ server <- function(input, output, session) {
     req(df)
     
     gender_df <- df %>%
-      count(gender) %>%
-      mutate(
+      dplyr::count(gender) %>%
+      dplyr::mutate(
         perc = n / sum(n),
         label = paste0(round(perc * 100, 1), "%")
       )
+      
     
     plot_ly(gender_df, 
             labels = ~gender, 
@@ -283,8 +367,8 @@ server <- function(input, output, session) {
     labels <- c("<50", "50-59", "60-69", "70-79", "80+")
     
     age_df <- df %>%
-      filter(!is.na(age)) %>%
-      mutate(
+      dplyr::filter(!is.na(age)) %>%
+      dplyr::mutate(
         age_group = cut(
           age,
           breaks = breaks,
@@ -292,7 +376,7 @@ server <- function(input, output, session) {
           right = FALSE
         )
       ) %>%
-      count(age_group)
+      dplyr::count(age_group)
     
     plot_ly(age_df,
             x = ~age_group,
@@ -312,6 +396,274 @@ server <- function(input, output, session) {
       )
   })
   
+  # Benchmark
+  output$de_plots_ui <- renderUI({
+    if (input$run_de == 0) {
+      div(
+        class = "panel-body",
+        p("Select a tumor site from the sidebar, 
+          adjust the sample size, signal strength, and dispersion, then click"),
+        p(strong("Run DE Genes Detection")),
+        p("to start the simulation.")
+      )
+    } else {
+      tagList(
+        h3("Benchmark Results"),
+        tabsetPanel(
+          id = "benchmark_tabs",
+          
+          # Tab 1: ROC Curve
+          tabPanel(
+            title = "ROC Curve",
+            br(),
+            withSpinner(plotlyOutput("bench_plot_roc", height = "550px"), 
+                        type = 4, color = "#7A658A", size = 1)
+          ),
+          
+          # Tab 2: FDR vs Sensitivity
+          tabPanel(
+            title = "FDR vs Sensitivity",
+            br(),
+            withSpinner(plotlyOutput("bench_plot_fdr", height = "550px"), 
+                        type = 4, color = "#7A658A", size = 1)
+          ),
+          
+          # Tab 3: Sensitivity vs LFC
+          tabPanel(
+            title = "Sensitivity vs LFC",
+            br(),
+            withSpinner(plotlyOutput("bench_plot_lfc", height = "550px"), 
+                        type = 4, color = "#7A658A", size = 1)
+          )
+        )
+      )
+    }
+  })
+  
+  method_cols <- c(
+    "edgeR" = "#7E7C48", 
+    "DESeq2" = "#BF685A", 
+    "limma-voom" = "#7C75C4", 
+    "limma-trend" = "#E3B4C2"
+  )
+
+  # ROC Curve (sensitivity vs. 1-specificity)
+  output$bench_plot_roc <- renderPlotly({
+    res_obj <- benchmark_res()
+    req(res_obj)
+    
+    df <- res_obj$result_df
+    
+    # Calculate ROC per method
+    roc_df <- df %>%
+      group_by(method) %>%
+      do({
+        roc_obj <- roc(.$truth, -.$pvalue, quiet = TRUE)
+        data.frame(
+          method = unique(.$method),
+          tpr = roc_obj$sensitivities,
+          fpr = 1 - roc_obj$specificities
+        )
+      }) %>%
+      ungroup()
+    
+    p <- ggplot(roc_df, aes(fpr, tpr, color = method)) +
+      geom_line(linewidth = 1) +
+      geom_abline(linetype = "dashed", color = "#9990A6") +
+      scale_color_manual(values = method_cols, drop = FALSE) +
+      labs(title = "ROC Curve", 
+           x = "1 - Specificity (FPR)", 
+           y = "Sensitivity (TPR)") +
+      theme_bw()
+    
+    ggplotly(p)
+  })
+  
+  # Sensitivity vs FDR
+  output$bench_plot_fdr <- renderPlotly({
+    res_obj <- benchmark_res()
+    req(res_obj)
+    
+    df <- res_obj$result_df
+    alpha_vec <- seq(0.01, 0.1, length.out = 10)
+    
+    # Calculate stats across different alpha thresholds
+    summ <- df %>%
+      tidyr::expand_grid(alpha = alpha_vec) %>%
+      group_by(method, LFC, alpha) %>%
+      summarise(
+        TP = sum(truth & (padj < alpha), na.rm = TRUE),
+        FP = sum(!truth & (padj < alpha), na.rm = TRUE),
+        n_true = sum(truth, na.rm = TRUE),
+        n_call = sum(padj < alpha, na.rm = TRUE),
+        sens = ifelse(n_true == 0, NA_real_, TP / n_true),
+        fdr  = ifelse(n_call == 0, NA_real_, FP / (TP + FP)),
+        .groups = "drop"
+      )
+    
+    # filter for LFC = 1
+    summ_lfc1 <- summ %>% 
+      mutate(LFC = suppressWarnings(as.numeric(LFC))) %>% 
+      filter(LFC == 1)
+    
+    p <- ggplot(summ_lfc1, aes(fdr, sens, color = method, shape = method)) +
+      geom_point(size = 3) +
+      geom_vline(xintercept = 0.05, linetype = "dashed", color = "#9990A6") +
+      scale_color_manual(values = method_cols, drop = FALSE) +
+      labs(title = "Sensitivity vs FDR (LFC = 1.0)",
+           x = "Observed FDR", y = "Sensitivity") +
+      theme_minimal()
+    
+    ggplotly(p)
+  })
+  
+  # Sensitivity vs LFC
+  output$bench_plot_lfc <- renderPlotly({
+    res_obj <- benchmark_res()
+    req(res_obj)
+    
+    df <- res_obj$result_df
+
+    summ_lfc <- df %>%
+      group_by(method, LFC) %>%
+      summarise(
+        TP = sum(truth & (padj < 0.05), na.rm = TRUE),
+        n_true = sum(truth, na.rm = TRUE),
+        sens = ifelse(n_true == 0, 0, TP / n_true),
+        .groups = "drop"
+      )
+    
+    p <- ggplot(summ_lfc, aes(x = LFC, y = sens, color = method, marker = method)) +
+      geom_point(size = 3) +
+      geom_line(linewidth = 1) +
+      scale_color_manual(values = method_cols, drop = FALSE) +
+      scale_x_continuous(breaks = sort(unique(summ_lfc$LFC))) +
+      labs(
+        title = "Sensitivity vs LFC (FDR < 0.05)",
+        x = "Log Fold Change (LFC)", 
+        y = "Sensitivity"
+      ) +
+      theme_minimal()
+    
+    ggplotly(p)
+  })
+  
+  # Sensitivity across different fold changes
+  benchmark_res <- eventReactive(input$run_de, {
+    req(input$cancer_type_de)
+    
+    N_sim <- input$de_sample_size 
+    pct_sim <- input$de_pct        
+    phi_sim <- input$dispersion
+    
+    bg_data <- get_cancer_expr(input$cancer_type_de)
+    bg_data <- bg_data[1:500, , drop = FALSE]
+    
+    withProgress(message = "Running Benchmark...", value = 0, {
+      incProgress(0.1, detail = "Simulating Data")
+      
+      # Run Simulation
+      sim_obj <- deg_simulation(
+        data = bg_data,
+        N = N_sim,
+        pct = pct_sim / 100, 
+        phi = phi_sim
+      )
+      
+      incProgress(0.4, detail = "Running DE Methods...")
+      
+      out_df_list <- list()
+      
+      for (scen_name in names(sim_obj$expr_data)) {
+        
+        curr_sim <- sim_obj$expr_data[[scen_name]]
+        counts <- curr_sim$counts
+        group  <- curr_sim$group
+        current_lfc <- as.numeric(gsub("logFC_", "", scen_name))
+        
+        design <- model.matrix(~group)
+        
+        # edgeR
+        dge <- DGEList(counts = counts, group = group)
+        dge <- calcNormFactors(dge)
+        dge <- estimateDisp(dge, design)
+        fit <- glmQLFit(dge, design)
+        qlf <- glmQLFTest(fit, coef = 2)
+        res_edger <- topTags(qlf, n = nrow(counts))$table
+        
+        df_edger <- data.frame(
+          gene = rownames(res_edger),
+          pvalue = res_edger$PValue,
+          padj = res_edger$FDR,
+          method = "edgeR",
+          LFC = current_lfc
+        )
+        
+        # DESeq2
+        dds <- DESeqDataSetFromMatrix(countData = counts, 
+                                      colData = data.frame(group=group), 
+                                      design = ~group)
+        
+        dds <- estimateSizeFactors(dds, type = "poscounts")
+        dds <- estimateDispersions(dds, quiet = TRUE)
+        dds <- nbinomWaldTest(dds, quiet = TRUE)
+        res_deseq <- results(dds)
+        
+        df_deseq <- data.frame(
+          gene = rownames(res_deseq),
+          pvalue = res_deseq$pvalue,
+          padj = res_deseq$padj,
+          method = "DESeq2",
+          LFC = current_lfc
+        )
+        dge_lim <- DGEList(counts = counts, group = group)
+        dge_lim <- calcNormFactors(dge_lim)
+        
+        # limma-voom
+        v <- voom(dge_lim, design, plot = FALSE)
+        fit_voom <- lmFit(v, design)
+        fit_voom <- eBayes(fit_voom)
+        res_voom <- topTable(fit_voom, coef = 2, number = nrow(counts), sort.by = "none")
+        
+        df_voom <- data.frame(
+          gene = rownames(res_voom),
+          pvalue = res_voom$P.Value,
+          padj = res_voom$adj.P.Val,
+          method = "limma-voom",
+          LFC = current_lfc
+        )
+        
+        # limma-trend 
+        logCPM <- cpm(dge_lim, log=TRUE, prior.count=3)
+        fit_trend <- lmFit(logCPM, design)
+        fit_trend <- eBayes(fit_trend, trend=TRUE)
+        res_trend <- topTable(fit_trend, coef = 2, number = nrow(counts), sort.by = "none")
+        
+        df_trend <- data.frame(
+          gene = rownames(res_trend),
+          pvalue = res_trend$P.Value,
+          padj = res_trend$adj.P.Val,
+          method = "limma-trend",
+          LFC = current_lfc
+        )
+        out_df_list[[scen_name]] <- rbind(df_edger, df_deseq, df_voom, df_trend)
+      }
+      
+      result_df <- do.call(rbind, out_df_list)
+      
+      result_df$truth <- result_df$gene %in% sim_obj$DE_list
+      result_df$pvalue[is.na(result_df$pvalue)] <- 1
+      result_df$padj[is.na(result_df$padj)] <- 1
+      
+      incProgress(0.9, detail = "Analysis Complete")
+    })
+    
+    list(
+      result_df = result_df, 
+      sim_details = sim_obj
+    )
+  }) 
+
   # Survival Analysis
   sim_ready <- reactiveVal(FALSE)
   

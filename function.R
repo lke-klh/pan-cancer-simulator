@@ -5,7 +5,7 @@
 #' 1) aligns common samples,
 #' 2) maps Ensembl IDs to gene symbols (via biomaRt),
 #' 3) cleans clinical info + creates survival variables,
-#' 4) selects top variable genes and Z-score normalizes expression,
+#' 4) selects top variable genes and Log2(Count + 1) normalizes expression,
 #' 5) merges clinical + expression into one dataset,
 #' 6) writes the merged dataset to a CSV file.
 #'
@@ -17,7 +17,7 @@
 #' @return A list with:
 #'   \item{merged_data}{Final merged data frame (also written to CSV).}
 #'   \item{clinical_clean}{Cleaned clinical data.}
-#'   \item{expr_z}{Z-score normalized expression matrix (genes x samples).}
+#'   \item{expr_log}{log2(Count + 1) normalized expression matrix (genes x samples).}
 #'   \item{common_samples}{Vector of sample IDs used.}
 #'
 #' @export
@@ -143,6 +143,7 @@ build_tcga <- function(clinical_file,
   top_idx  <- order(gene_var, decreasing = TRUE)[1:top_n]
   
   expr_top <- expr_raw[top_idx, , drop = FALSE]  # genes x samples
+  expr_log <- log2(expr_top + 1)
   
   # Merge clinical + expression 
   expr_df <- as.data.frame(t(expr_top))   # samples x genes
@@ -151,7 +152,7 @@ build_tcga <- function(clinical_file,
   merged_data <- merge(
     luad_clinical_clean,
     expr_df,
-    by  = "sample",
+    by = "sample",
     all = FALSE
   )
   
@@ -190,7 +191,7 @@ build_tcga <- function(clinical_file,
   list(
     merged_data    = merged_data,
     clinical_clean = luad_clinical_clean,
-    expr_z         = expr_z,
+    expr_log       = expr_log,
     common_samples = common_samples
   )
 }

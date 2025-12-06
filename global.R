@@ -8,6 +8,10 @@ suppressPackageStartupMessages({
   library(biomaRt)
   library(survival)
   library(randomForestSRC)
+  library(edgeR)
+  library(limma)
+  library(DESeq2)
+  library(pROC)
 })
 
 source("function.R")
@@ -132,7 +136,7 @@ get_cancer_data <- function(cancer_type) {
 get_cancer_expr <- function(cancer_type) {
   obj <- get_cancer_object(cancer_type)
   if (is.null(obj)) return(NULL)
-  obj$expr_z
+  obj$expr_log
 }
 
 get_available_genes <- function(cancer_type) {
