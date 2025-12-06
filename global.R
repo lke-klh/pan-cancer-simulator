@@ -6,6 +6,8 @@ suppressPackageStartupMessages({
   library(plotly)
   library(pheatmap)
   library(biomaRt)
+  library(survival)
+  library(randomForestSRC)
 })
 
 source("function.R")

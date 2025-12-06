@@ -107,7 +107,7 @@ build_tcga <- function(clinical_file,
   luad_clinical_clean <- luad_clinical %>%
     dplyr::mutate(
       sample_full = sample,
-      patient_id  = substr(sample, 1, 12),
+      patient_id = substr(sample, 1, 12),
       race = trimws(tolower(race.demographic)),
       race = ifelse(
         is.na(race) | race == "" | race == "not reported",
@@ -116,13 +116,13 @@ build_tcga <- function(clinical_file,
       )
     ) %>%
     dplyr::transmute(
-      sample       = sample_full,
-      patient_id   = patient_id,
+      sample = sample_full,
+      patient_id = patient_id,
       disease_type = disease_type,
       primary_site = primary_site,
-      race         = race,
-      gender       = gender.demographic,
-      age          = as.numeric(age_at_index.demographic),
+      race = race,
+      gender = gender.demographic,
+      age = as.numeric(age_at_index.demographic),
       sample_type_code = substr(sample_full, 14, 15),
       tissue_status = dplyr::case_when(
         sample_type_code %in% c("01", "02", "03", "06") ~ "Primary_tumor",
@@ -131,22 +131,21 @@ build_tcga <- function(clinical_file,
       ),
       # survival outcome
       event = OS,
-      time  = OS.time
+      time = OS.time
     ) %>%
     dplyr::filter(!is.na(race))  # drop samples with missing race
   
-  # Normalization, select top variable genes and Z-score
-  expr_log <- expr_mat
-  gene_var <- apply(expr_log, 1, var, na.rm = TRUE)
+  # Feature selection only
+  expr_raw <- expr_mat
   
-  top_n   <- min(top_n_genes, nrow(expr_log))
-  top_idx <- order(gene_var, decreasing = TRUE)[1:top_n]
-  expr_log_filt <- expr_log[top_idx, , drop = FALSE]
+  gene_var <- apply(expr_raw, 1, var, na.rm = TRUE)
+  top_n <- min(top_n_genes, nrow(expr_raw))
+  top_idx  <- order(gene_var, decreasing = TRUE)[1:top_n]
   
-  expr_z <- t(scale(t(expr_log_filt)))  # genes x samples
+  expr_top <- expr_raw[top_idx, , drop = FALSE]  # genes x samples
   
-  # Merge clinical and expression data
-  expr_df <- as.data.frame(t(expr_z))   # samples x genes
+  # Merge clinical + expression 
+  expr_df <- as.data.frame(t(expr_top))   # samples x genes
   expr_df$sample <- rownames(expr_df)
   
   merged_data <- merge(
@@ -167,12 +166,27 @@ build_tcga <- function(clinical_file,
   gene_cols <- setdiff(colnames(merged_data), clinical_cols)
   merged_data <- merged_data[, c(clinical_cols, gene_cols)]
   
-  merged_data$event <- factor(merged_data$event, levels = c(0, 1), labels = c("Alive", "Dead"))
-  merged_data$race <- factor(merged_data$race, levels = c("white", "black or african american", "asian", "american indian or alaska native"),
-                             labels = c("White", "Black or African American", "Asian", "American Indian or Alaska Native"))
-  merged_data$gender <- factor(merged_data$gender, levels = c("male", "female"), labels = c("Male", "Female"))
-  merged_data$tissue_status <- factor(merged_data$tissue_status, levels = c("Primary_tumor", "Normal"),
-                                      labels = c("Primary Tumor", "Normal"))
+  merged_data$event <- factor(merged_data$event, levels = c(0, 1),
+                              labels = c("Alive", "Dead"))
+  merged_data$race <- factor(
+    merged_data$race,
+    levels = c("white", "black or african american", "asian",
+               "american indian or alaska native"),
+    labels = c("White", "Black or African American", "Asian",
+               "American Indian or Alaska Native")
+  )
+  merged_data$gender <- factor(
+    merged_data$gender,
+    levels = c("male", "female"),
+    labels = c("Male", "Female")
+  )
+  
+  merged_data$tissue_status <- factor(
+    merged_data$tissue_status,
+    levels = c("Primary_tumor", "Normal"),
+    labels = c("Primary Tumor", "Normal")
+  )
+
   list(
     merged_data    = merged_data,
     clinical_clean = luad_clinical_clean,

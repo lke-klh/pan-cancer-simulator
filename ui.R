@@ -1,26 +1,32 @@
 library(shiny)
 library(shinycssloaders)
+library(plotly)
 
-simulationSidebar <- function() {
+# DE Gene Sidebar
+deGeneSidebar <- function() {
   sidebarPanel(
     width = 4,
     div(
       class = "panel-with-header",
       div(
         class = "panel-header",
-        h4("Simulation Inputs")
+        h4("DE Gene Inputs")
       ),
       div(
         class = "panel-body",
-        tags$small("Configure demographic and genomic parameters for the simulation."),
-        tags$hr(),
+        # Subtitle section
+        tagList(
+          tags$small("Configure parameters for differential expression benchmarking."),
+          tags$hr()
+        ),
         
+        # Inputs
         tags$div(
           class = "sidebar-section",
           tags$h4("Tumor site"),
           selectInput(
-            inputId = "cancer_type",
-            label   = "Cancer type",
+            inputId = "cancer_type_de",
+            label = "Cancer type",
             choices = c("Thyroid", "Liver", "Kidney", "Breast", "Colon", "Bronchus and Lung"),
             selected = "Thyroid"
           )
@@ -30,16 +36,109 @@ simulationSidebar <- function() {
         
         tags$div(
           class = "sidebar-section",
+          tags$h4("Sampling"),
+          sliderInput(
+            inputId = "de_sample_size",
+            label = "Sample size",
+            min = 5,
+            max = 25,
+            value = 10,
+            step = 1
+          )
+        ),
+        
+        tags$hr(),
+        
+        tags$div(
+          class = "sidebar-section",
+          tags$h4("Signal strength"),
+          sliderInput(
+            inputId = "de_pct",
+            label = "Percentage of DE genes (%)",
+            min = 5,
+            max = 15,
+            value = 10,
+            step = 1
+          )
+        ),
+        
+        tags$hr(),
+        
+        tags$div(
+          class = "sidebar-section",
+          tags$h4("Dispersion Spread ϕ"),
+          sliderInput(
+            inputId = "dispersion",
+            label = "Dispersion (phi ϕ)",
+            min = 0.1,
+            max = 0.5,
+            value = 0.3,
+            step = 0.1
+          )
+        ),
+        
+        div(
+          class = "sidebar-actions",
+          actionButton(
+            inputId = "run_de",
+            label = "Run DE Genes Detection",
+            width = "100%"
+          )
+        )
+      )
+    )
+  )
+}
+
+selected_genes <- c(
+  "COL11A1", "MMP1", "MMP7", "LCN2", "LGR5",
+  "PROM1", "IGF2", "EREG", "CXCL13", "VTCN1",
+  "LCN2", "ADH1B", "PCK1", "AKR1B10", "CA4",
+  "ROS1", "SFRP1", "TFF1","XIST")
+
+# Survival Sidebar
+survivalSidebar <- function() {
+  sidebarPanel(
+    width = 4,
+    div(
+      class = "panel-with-header",
+      div(
+        class = "panel-header",
+        h4("Survival Inputs")
+      ),
+      div(
+        class = "panel-body",
+        # Subtitle section
+        tagList(
+          tags$small("Configure demographic and genomic parameters for the survival analysis."),
+          tags$hr()
+        ),
+        
+        # Inputs
+        tags$div(
+          class = "sidebar-section",
+          tags$h4("Tumor site"),
+          selectInput(
+            inputId = "cancer_type_surv",
+            label   = "Cancer type",
+            choices = c("Thyroid", "Liver", "Kidney", "Breast", "Colon", "Bronchus and Lung"),
+            selected = "Bronchus and Lung"
+          )
+        ),
+        
+        tags$hr(),
+        
+        tags$div(
+          class = "sidebar-section",
           tags$h4("Demographics"),
           selectInput(
-            inputId = "sex",
+            inputId = "gender_input",
             label = "Sex",
             choices = c("Female", "Male"),
             selected = "Female"
           ),
-          
           sliderInput(
-            inputId = "age",
+            inputId = "age_input",
             label = "Age",
             min = 18,
             max = 99,
@@ -53,18 +152,18 @@ simulationSidebar <- function() {
           class = "sidebar-section",
           tags$h4("Genomics"),
           selectizeInput(
-            inputId  = "genes",
+            inputId  = "selected_gene",
             label = "Gene",
-            choices = c("TP53", "BRCA1", "BRCA2", "EGFR", "KRAS", "PIK3CA"),
-            selected = "TP53",
+            choices = selected_genes,
+            selected = "COL11A1",
             multiple = FALSE
           ),
           sliderInput(
-            inputId = "gene_expr",
-            label = "Gene expression level (exponential)",
-            min = -4,
-            max = 8,
-            value = 2,
+            inputId = "expr_treated",
+            label = "Gene Expression Level (Log 2)",
+            min = 0,
+            max = 12,
+            value = 6,
             step = 0.5
           )
         ),
@@ -73,8 +172,42 @@ simulationSidebar <- function() {
           class = "sidebar-actions",
           actionButton(
             inputId = "run_sim",
-            label   = "Run Simulation",
-            width   = "100%"
+            label = "Run Survival Analysis",
+            width = "100%"
+          )
+        )
+      )
+    )
+  )
+}
+
+# Download Sidebar 
+downloadSidebar <- function() {
+  sidebarPanel(
+    width = 4,
+    div(
+      class = "panel-with-header",
+      div(
+        class = "panel-header",
+        h4("Data Set Filters")
+      ),
+      div(
+        class = "panel-body",
+        # Subtitle section
+        tagList(
+          tags$small("Select a cancer type to preview and download the merged and cleaned dataset."),
+          tags$hr()
+        ),
+        
+        # Inputs
+        tags$div(
+          class = "sidebar-section",
+          tags$h4("Tumor site"),
+          selectInput(
+            inputId = "cancer_type_dl",
+            label = "Cancer type",
+            choices = c("Thyroid", "Liver", "Kidney", "Breast", "Colon", "Bronchus and Lung"),
+            selected = "Thyroid"
           )
         )
       )
@@ -108,10 +241,15 @@ ui <- tagList(
         color: #ffcc66;
       }
       
+      .nav-tabs > li > a {
+      color: #614d6e;
+      font-weight: 500;
+    }
       /* body */
       body {
         font-family: 'Verdana', Arial, sans-serif;
         font-size: 14px;
+        padding-bottom: 70px;
       }
 
       /* human body container */
@@ -187,7 +325,6 @@ ui <- tagList(
         border: 1px solid #e3e3e3;
         border-radius: 4px;
         margin-bottom: 15px;
-        overflow: hidden;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       }
 
@@ -196,6 +333,7 @@ ui <- tagList(
         color: white;
         padding: 12px 15px;
         margin: 0;
+        border-radius: 4px 4px 0 0;
       }
 
       .panel-header h4 {
@@ -212,7 +350,7 @@ ui <- tagList(
 
       /* Sidebar styling */
       .sidebar-panel {
-        padding: 0 !important;
+        padding: 0;
       }
       
       .sidebar-section h4 {
@@ -303,7 +441,24 @@ ui <- tagList(
         background-color: transparent;
         border: none;
         box-shadow: none;
-        padding: 0; 
+        padding: 0px; 
+      }
+      
+      .app-footer {
+        background-color: #7A658A;
+        color: white;
+        padding: 3px;
+        text-align: center;
+        margin-top: 0;
+        width: 100%;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+      }
+      
+      .shiny-progress .progress-bar,
+      .progress-bar {
+        background-color: #7A658A;
       }
     "))
   ),
@@ -325,9 +480,9 @@ ui <- tagList(
             div(
               id = "body-wrapper",
               tags$img(
-                id   = "body-image",
-                src  = "human_body.svg",
-                alt  = "Human body diagram",
+                id = "body-image",
+                src = "human_body.svg",
+                alt = "Human body diagram",
                 class = "img-responsive"
               ),
               
@@ -433,8 +588,16 @@ ui <- tagList(
                   width = 12,
                   div(
                     class = "panel-with-header",
-                    div(class = "panel-header", h4(textOutput("organ_title", inline = TRUE))),
-                    div(class = "panel-body", uiOutput("organ_intro"))
+                    div(class = "panel-header", 
+                        h4(textOutput("organ_title", inline = TRUE))),
+                    div(class = "panel-body", 
+                        withSpinner(
+                          uiOutput("organ_intro"),
+                          type = 4,
+                          color = "#7A658A",
+                          size = 0.7,
+                          proxy.height = "100px"
+                          ))
                   )
                 )
               ),
@@ -444,7 +607,7 @@ ui <- tagList(
                   width = 12,
                   div(
                     class = "panel-with-header",
-                    div(class = "panel-header", h4("Analysis Results")),
+                    div(class = "panel-header", h4("Analysis Plots")),
                     div(
                       class = "panel-body",
                       tabsetPanel(
@@ -452,7 +615,7 @@ ui <- tagList(
                         
                         # Tab 1: Heatmap
                         tabPanel(
-                          title = "Top 20 Genes Heat Map",
+                          title = "Top 20 Genes Expression",
                           br(),
                           withSpinner(plotOutput("plot_heatmap", height = "500px"),
                                       type = 4,
@@ -491,48 +654,51 @@ ui <- tagList(
       )
     ),
     
-    # Survival Analysis
+    # DE Gene Analysis
     tabPanel(
-      title = "🧬 Survival Analysis",
+      title = "🧬 DE Genes Detection",
       sidebarLayout(
-        sidebarPanel = simulationSidebar(),
-        mainPanel(
-          tabsetPanel(
-            id = "surv_tabs",
-            tabPanel(
-              title = "Survival Analysis",
-              h3("Survival Analysis Plot"),
-              plotOutput("surv_plot")
-            ),
-            tabPanel(
-              title = "Summary Stats",
-              h3("Summary Statistics"),
-              verbatimTextOutput("summary_stats")
-            )
-          )
+        deGeneSidebar(),
+        mainPanel = mainPanel(
+          width = 8,
+          h3("DE Genes Detection Benchmark"),
+          plotOutput("de_genes_detection")
         )
       )
     ),
     
-    # Distribution Page
+    # Survival Analysis
     tabPanel(
-      title = "📊 Distribution",
+      title = "📉 Survival Analysis",
       sidebarLayout(
-        sidebarPanel = simulationSidebar(),
-        mainPanel(
-          h3("Distribution of Simulated Data"),
-          plotOutput("dist_plot")
+        survivalSidebar(),
+        mainPanel = mainPanel(
+          width = 8,
+          tabsetPanel(
+            id = "surv_tabs",
+            tabPanel(
+              title = "Survival Curves",
+              uiOutput("surv_curv_ui")
+            ),
+            tabPanel(
+              title = "Survival Gains",
+              uiOutput("surv_gain_ui")
+            )
+          ),
+          plotlyOutput("surv_plot", height = "450px")
         )
       )
-    ),
+    )
+    ,
     
     # Data Set
     tabPanel(
       title = "🗃️ Data Set",
       sidebarLayout(
-        sidebarPanel = simulationSidebar(),
+        downloadSidebar(),
         
-        mainPanel(
+        mainPanel = mainPanel(
+          width = 8,
           h3("Download Merged Data"),
           p("Download the fully merged clinical and genomic dataset for the cancer type selected in the sidebar."),
           br(),
@@ -553,6 +719,11 @@ ui <- tagList(
           )
         )
       )
+    ),
+    
+    footer = tags$div(
+      class = "app-footer",
+      p("© 2025 Pan-Cancer Simulator | Developed with R Shiny & Plotly | Liuhan Ke, Ziyi Ou, Hailin Zhang")
     )
   )
 )
