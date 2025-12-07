@@ -90,12 +90,6 @@ deGeneSidebar <- function() {
   )
 }
 
-selected_genes <- c(
-  "COL11A1", "MMP1", "MMP7", "LCN2", "LGR5",
-  "PROM1", "IGF2", "EREG", "CXCL13", "VTCN1",
-  "LCN2", "ADH1B", "PCK1", "AKR1B10", "CA4",
-  "ROS1", "SFRP1", "TFF1","XIST")
-
 # Survival Sidebar
 survivalSidebar <- function() {
   sidebarPanel(
@@ -154,8 +148,7 @@ survivalSidebar <- function() {
           selectizeInput(
             inputId  = "selected_gene",
             label = "Gene",
-            choices = selected_genes,
-            selected = "COL11A1",
+            choices = NULL,
             multiple = FALSE
           ),
           sliderInput(
@@ -683,8 +676,7 @@ ui <- tagList(
               title = "Survival Gains",
               uiOutput("surv_gain_ui")
             )
-          ),
-          plotlyOutput("surv_plot", height = "450px")
+          )
         )
       )
     )

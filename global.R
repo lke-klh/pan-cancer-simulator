@@ -5,7 +5,6 @@ suppressPackageStartupMessages({
   library(ggplot2)
   library(plotly)
   library(pheatmap)
-  library(biomaRt)
   library(survival)
   library(randomForestSRC)
   library(edgeR)
@@ -14,13 +13,11 @@ suppressPackageStartupMessages({
   library(pROC)
 })
 
-source("function.R")
-
 app_config <- list(
-  data_dir = "data",
+  data_dir = "top2000",
   cache_dir = "cache",
   top_n_genes = 2000,
-  use_cache = TRUE
+  use_cache = FALSE
 )
 
 cancer_codes <- list(
@@ -32,115 +29,124 @@ cancer_codes <- list(
   "Bronchus and Lung" = "luad"
 )
 
-.cancer_env <- new.env(parent = emptyenv())
 
-load_cancer_data <- function(
-    cancer_type,
-    data_dir = app_config$data_dir,
-    cache_dir = app_config$cache_dir,
-    top_n_genes = app_config$top_n_genes,
-    use_cache = app_config$use_cache
-) {
-  
-  # warnings for mismatch
-  cancer_code <- cancer_codes[[cancer_type]]
-  if (is.null(cancer_code)) {
-    warning("Unknown cancer type: ", cancer_type)
-    return(NULL)
-  }
-  
-  # need cache for dealing with big data
-  if (!dir.exists(cache_dir)) {
-    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-  }
-  
-  cache_file <- file.path(cache_dir, paste0(cancer_code, "_processed.rds"))
-  
-  if (use_cache && file.exists(cache_file)) {
-    msg <- paste0("Reading cached data for ", cancer_type, " from ", cache_file)
-    message(msg)
-    out <- tryCatch(
-      readRDS(cache_file),
-      error = function(e) {
-        warning("Failed to read cache file for ", cancer_type, ": ", e$message)
-        NULL
-      }
+clinical_fixed_cols <- c(
+  "sample", "patient_id", "tissue_status", "event", "time",
+  "age", "gender", "race", "primary_site", "disease_type",
+  "sample_type_code"
+)
+
+# Expression Matrix
+.current_expr_log <- NULL
+.current_expr_ct  <- NULL
+
+load_expr_log <- function(ct) {
+  if (!identical(ct, .current_expr_ct)) {
+    message("Loading expression matrix for: ", ct)
+    
+    code <- cancer_codes[[ct]]
+    file <- file.path(app_config$data_dir,
+                      paste0("TCGA_", toupper(code), "_merged_2000genes.csv"))
+    
+    df <- suppressMessages(readr::read_csv(file, show_col_types = FALSE))
+    
+    # TRUE gene columns = numeric and not clinical
+    gene_cols <- setdiff(
+      names(df)[sapply(df, is.numeric)],
+      c("age", "time", "sample_type_code")
     )
-    if (!is.null(out)) return(out)
+    
+    expr_mat <- as.matrix(t(df[, gene_cols, drop = FALSE]))
+    rownames(expr_mat) <- gene_cols
+    colnames(expr_mat) <- df$sample
+    
+    .current_expr_log <<- log2(expr_mat + 1)
+    .current_expr_ct  <<- ct
   }
   
-  clinical_file <- file.path(data_dir, paste0("TCGA-", toupper(cancer_code), ".clinical.tsv.gz"))
-  count_file <- file.path(data_dir, paste0("TCGA-", toupper(cancer_code), ".star_counts.tsv.gz"))
-  survival_file <- file.path(data_dir, paste0("TCGA-", toupper(cancer_code), ".survival.tsv.gz"))
-  
-  if (!file.exists(clinical_file) ||
-      !file.exists(count_file)    ||
-      !file.exists(survival_file)) {
-    warning("One or more TCGA files missing for ", cancer_type,
-            ". Expected in directory: ", normalizePath(data_dir, winslash = "/"))
-    return(NULL)
-  }
-  
-  message("Building TCGA object for ", cancer_type, " which may take a while...")
-  
-  result <- tryCatch(
-    build_tcga(
-      clinical_file = clinical_file,
-      count_file = count_file,
-      survival_file = survival_file,
-      top_n_genes = top_n_genes
-    ),
-    error = function(e) {
-      warning("Failed to build TCGA object for ", cancer_type, ": ", e$message)
-      NULL
-    }
-  )
-  
-  if (is.null(result)) return(NULL)
-  
-  if (use_cache) {
-    tryCatch(
-      saveRDS(result, cache_file),
-      error = function(e) {
-        warning("Failed to save cache file for ", cancer_type, ": ", e$message)
-      }
+  return(.current_expr_log)
+}
+
+get_expr_log <- function(ct) load_expr_log(ct)
+
+# Merged Data Loading
+.current_merged_df <- NULL
+.current_merged_ct <- NULL
+
+load_merged_data <- function(ct) {
+  if (!identical(ct, .current_merged_ct)) {
+    
+    message("Loading merged clinical data for: ", ct)
+    code <- cancer_codes[[ct]]
+    file <- file.path(app_config$data_dir,
+                      paste0("TCGA_", toupper(code), "_merged_2000genes.csv"))
+    
+    df <- suppressMessages(readr::read_csv(file, show_col_types = FALSE))
+    clinical_cols_present <- intersect(clinical_fixed_cols, names(df))
+    gene_cols <- setdiff(
+      names(df)[sapply(df, is.numeric)],
+      c("age", "time", "sample_type_code")
     )
+    
+    expr_sub <- df[, gene_cols, drop = FALSE]
+    vars <- apply(expr_sub, 2, var, na.rm = TRUE)
+    
+    top_n <- min(app_config$top_n_genes, length(vars))
+    top_genes <- names(sort(vars, decreasing = TRUE))[1:top_n]
+    
+    df_final <- cbind(
+      df[, clinical_cols_present, drop = FALSE],
+      df[, top_genes, drop = FALSE]
+    )
+    
+    .current_merged_df <<- df_final
+    .current_merged_ct <<- ct
   }
   
-  result
+  return(.current_merged_df)
 }
 
-get_cancer_object <- function(cancer_type) {
-  if (is.null(cancer_type) || !nzchar(cancer_type)) return(NULL)
 
-  if (exists(cancer_type, envir = .cancer_env, inherits = FALSE)) {
-    return(get(cancer_type, envir = .cancer_env, inherits = FALSE))
+get_merged_data <- function(ct) load_merged_data(ct)
+
+
+# Survival Data
+.current_surv_df <- NULL
+.current_surv_ct <- NULL
+
+load_surv_df <- function(ct) {
+  if (!identical(ct, .current_surv_ct)) {
+    
+    message("Loading survival-cleaned data for: ", ct)
+    df <- load_merged_data(ct)
+    
+    df2 <- df %>%
+      filter(tissue_status == "Primary Tumor") %>%
+      mutate(
+        event = case_when(event == "Dead" ~ 1,
+                          event == "Alive" ~ 0,
+                          TRUE ~ NA_real_),
+        time = as.numeric(time),
+        age = as.numeric(age),
+        gender = as.factor(gender)
+      ) %>%
+      drop_na(time, event, age, gender)
+    
+    .current_surv_df <<- df2
+    .current_surv_ct <<- ct
   }
   
-  obj <- load_cancer_data(cancer_type)
-  if (is.null(obj)) {
-    message("No data available for cancer type: ", cancer_type)
-    return(NULL)
-  }
+  return(.current_surv_df)
+}
+
+get_surv_df <- function(ct) load_surv_df(ct)
+
+# Gene List
+get_gene_list <- function(ct) {
+  expr <- get_expr_log(ct)
   
-  assign(cancer_type, obj, envir = .cancer_env)
-  obj
-}
-
-get_cancer_data <- function(cancer_type) {
-  obj <- get_cancer_object(cancer_type)
-  if (is.null(obj)) return(NULL)
-  obj$merged_data
-}
-
-get_cancer_expr <- function(cancer_type) {
-  obj <- get_cancer_object(cancer_type)
-  if (is.null(obj)) return(NULL)
-  obj$expr_log
-}
-
-get_available_genes <- function(cancer_type) {
-  expr_data <- get_cancer_expr(cancer_type)
-  if (is.null(expr_data)) return(character(0))
-  sort(rownames(expr_data))
+  gene_variance <- apply(expr, 1, var, na.rm = TRUE)
+  ranked <- names(sort(gene_variance, decreasing = TRUE))
+  
+  head(ranked, 10)
 }

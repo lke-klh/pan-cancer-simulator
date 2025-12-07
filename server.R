@@ -31,7 +31,7 @@ deg_simulation <- function(data, N, pct,
   size_g <- 1 / phi
   
   n_DE <- round(G * pct)
-  DE_idx <- sample(seq_len(G), n_DE, replace = FALSE)
+  DE_idx <- sample.int(G, n_DE)
   
   n_up  <- ceiling(n_DE / 2)
   DE_up_idx   <- DE_idx[seq_len(n_up)]
@@ -44,12 +44,9 @@ deg_simulation <- function(data, N, pct,
   direction[DE_down_idx] <- -1
   names(direction) <- gene_names
   
-  J <- 2 * N
   group <- factor(c(rep("healthy", N), rep("patient", N)))
-  sample_names <- c(
-    paste0("healthy", seq_len(N)),
-    paste0("patient", seq_len(N))
-  )
+  sample_names <- c(paste0("healthy", seq_len(N)),
+                    paste0("patient", seq_len(N)))
   
   expr_data <- vector("list", length(logFC_vec))
   names(expr_data) <- paste0("logFC_", logFC_vec)
@@ -59,27 +56,32 @@ deg_simulation <- function(data, N, pct,
     fc <- 2^lfc
     
     muA <- base_mu
-    
     muB <- base_mu
-    muB[DE_up_idx] <- muA[DE_up_idx] * fc
+    muB[DE_up_idx]   <- muA[DE_up_idx] * fc
     muB[DE_down_idx] <- muA[DE_down_idx] / fc
     
-    sim_counts <- matrix(0L, nrow = G, ncol = J)
+    sim_A <- matrix(
+      rnbinom(G * N, mu = rep(muA, each = N), size = size_g),
+      nrow = G, ncol = N, byrow = TRUE
+    )
+    sim_B <- matrix(
+      rnbinom(G * N, mu = rep(muB, each = N), size = size_g),
+      nrow = G, ncol = N, byrow = TRUE
+    )
+    
+    sim_counts <- cbind(sim_A, sim_B)
     rownames(sim_counts) <- gene_names
     colnames(sim_counts) <- sample_names
     
-    for (g in seq_len(G)) {
-      sim_counts[g, 1:N] <- rnbinom(N, mu = muA[g], size = size_g)
-      sim_counts[g, (N + 1):(2 * N)] <- rnbinom(N, mu = muB[g], size = size_g)
-    }
-    
     expr_data[[nm]] <- list(
       counts = sim_counts,
-      log2expr = log2(sim_counts + 1),
       group = group,
       samples = sample_names
     )
+    
+    rm(sim_A, sim_B, sim_counts, muA, muB); gc()
   }
+  
   list(
     expr_data = expr_data,
     DE_list = DE_list,
@@ -100,18 +102,19 @@ simulate_gene_effect <- function(
     years = c(3, 5, 10),
     expr_sd = 5.0
 ) {
-  
+  # input validation
   gender_factor <- factor(gender_input, levels = levels(clean_df$gender))
-  time_grid <- rsf_fit$time.interest
-  gene_range <- range(clean_df$Gene_Expression, na.rm = TRUE)
   
-  clamp_gene <- function(x) {
-    pmin(pmax(x, gene_range[1]), gene_range[2])
-  }
+  time_grid <- rsf_fit$time.interest
+  if (length(time_grid) == 0) stop("No time points in RSF model")
+  
+  # gene range
+  gene_range <- range(clean_df$Gene_Expression, na.rm = TRUE)
+  clamp_gene <- function(x) pmin(pmax(x, gene_range[1]), gene_range[2])
   
   new_patients <- data.frame(
     age = c(age_input, age_input),
-    gender = gender_factor,
+    gender = rep(gender_factor, 2),
     Gene_Expression = c(expr_baseline, expr_treated)
   )
   
@@ -121,67 +124,74 @@ simulate_gene_effect <- function(
   single_curve_df <- data.frame(
     time = rep(time_grid, times = nrow(surv_mat_single)),
     survival = as.vector(t(surv_mat_single)),
-    group = factor(
-      rep(c("Baseline expression", "Treated expression"),
-          each = length(time_grid)),
-      levels = c("Baseline expression", "Treated expression")
-    )
+    group = factor(rep(c("Baseline expression","Treated expression"),
+                       each = length(time_grid)))
   )
   
-  # Simulation
-  gene_base_vec <- clamp_gene(rnorm(N, mean = expr_baseline, sd = expr_sd))
-  gene_treat_vec <- clamp_gene(rnorm(N, mean = expr_treated,  sd = expr_sd))
+  rm(pred_single, surv_mat_single); gc()
+  
+  # simulation
+  gene_base_vec  <- clamp_gene(rnorm(N, mean = expr_baseline, sd = expr_sd))
+  gene_treat_vec <- clamp_gene(rnorm(N, mean = expr_treated, sd = expr_sd))
   
   base_patients <- data.frame(
     age = rep(age_input, N),
     gender = rep(gender_factor, N),
     Gene_Expression = gene_base_vec
   )
-  
   treat_patients <- data.frame(
     age = rep(age_input, N),
     gender = rep(gender_factor, N),
     Gene_Expression = gene_treat_vec
   )
   
+  # pred_baseline
   pred_base <- predict(rsf_fit, newdata = base_patients)
-  pred_treat <- predict(rsf_fit, newdata = treat_patients)
+  S_base <- pred_base$survival  # N x T
   
-  S_base <- pred_base$survival
-  S_treat <- pred_treat$survival
-  
+  # compute summary stats
   mean_base <- colMeans(S_base)
-  mean_treat <- colMeans(S_treat)
+  q25_base  <- apply(S_base, 2, quantile, 0.25)
+  q75_base  <- apply(S_base, 2, quantile, 0.75)
   
-  q25_base <- apply(S_base,  2, quantile, 0.25)
-  q75_base <- apply(S_base,  2, quantile, 0.75)
-  q25_treat <- apply(S_treat, 2, quantile, 0.25)
-  q75_treat <- apply(S_treat, 2, quantile, 0.75)
-  
-  avg_curve_df <- rbind(
-    data.frame(
-      time = time_grid,
-      mean = mean_base,
-      lower = q25_base,
-      upper = q75_base,
-      scenario = "Baseline"
-    ),
-    data.frame(
-      time = time_grid,
-      mean = mean_treat,
-      lower = q25_treat,
-      upper = q75_treat,
-      scenario = "Treated"
-    )
+  # prepare avg df
+  avg_base_df <- data.frame(
+    time = time_grid,
+    mean = mean_base,
+    lower = q25_base,
+    upper = q75_base,
+    scenario = "Baseline"
   )
   
-  # survival gain
+  # baseline survival
   t_star <- years * 365
   idx_vec <- sapply(t_star, function(t) which.min(abs(time_grid - t)))
   
   S_base_years <- S_base[, idx_vec, drop = FALSE]
+  
+  rm(S_base, pred_base); gc()
+  
+  # pred-treated
+  pred_treat <- predict(rsf_fit, newdata = treat_patients)
+  S_treat <- pred_treat$survival
+  
+  mean_treat <- colMeans(S_treat)
+  q25_treat  <- apply(S_treat, 2, quantile, 0.25)
+  q75_treat  <- apply(S_treat, 2, quantile, 0.75)
+  
+  avg_treat_df <- data.frame(
+    time = time_grid,
+    mean = mean_treat,
+    lower = q25_treat,
+    upper = q75_treat,
+    scenario = "Treated"
+  )
+  
   S_treat_years <- S_treat[, idx_vec, drop = FALSE]
   
+  rm(S_treat, pred_treat); gc()
+  
+  # Survival Gains
   delta_S <- S_treat_years - S_base_years
   
   delta_hist_df <- data.frame(
@@ -197,6 +207,11 @@ simulate_gene_effect <- function(
     )
   })
   
+  rm(delta_S, S_base_years, S_treat_years); gc()
+  
+  # combined avg df
+  avg_curve_df <- rbind(avg_base_df, avg_treat_df)
+  
   list(
     single_curve_df = single_curve_df,
     avg_curve_df = avg_curve_df,
@@ -205,9 +220,8 @@ simulate_gene_effect <- function(
   )
 }
 
-
 server <- function(input, output, session) {
-
+  
   classic_purple_gray <- c(
     "#7C75C4", "#C9A4BA", "#E3B4C2",
     "#EBD4D0", "#7E7C48", "#A39F53",
@@ -272,8 +286,8 @@ server <- function(input, output, session) {
   # Gene Heat Map
   output$plot_heatmap <- renderPlot({
     req(input$selected_organ)
-    expr_data <- get_cancer_expr(input$selected_organ)
-      
+    expr_data <- get_expr_log(input$selected_organ)
+    
     n_genes <- min(20, nrow(expr_data))
     top_genes_data <- expr_data[1:n_genes, , drop = FALSE]
     
@@ -282,10 +296,10 @@ server <- function(input, output, session) {
       keep_idx <- sample(seq_len(ncol(top_genes_data)), 50)
       top_genes_data <- top_genes_data[, keep_idx, drop = FALSE]
     }
-      
+    
     top_genes_data[is.na(top_genes_data)] <- 0
     top_genes_data[is.infinite(top_genes_data)] <- 0
-      
+    
     pheatmap(
       top_genes_data,
       cluster_rows = TRUE,
@@ -303,13 +317,13 @@ server <- function(input, output, session) {
   # Race
   output$plot_race <- renderPlotly({
     req(input$selected_organ)
-    df <- get_cancer_data(input$selected_organ)
+    df <- get_merged_data(input$selected_organ)
     req(df)
     
     race_df <- df %>%
       dplyr::count(race) %>%
       dplyr::mutate(race = reorder(race, n, decreasing = TRUE))
-      
+    
     plot_ly(race_df, 
             x = ~race, 
             y = ~n, 
@@ -331,7 +345,7 @@ server <- function(input, output, session) {
   # Sex 
   output$plot_gender <- renderPlotly({
     req(input$selected_organ)
-    df <- get_cancer_data(input$selected_organ)
+    df <- get_merged_data(input$selected_organ)
     req(df)
     
     gender_df <- df %>%
@@ -340,7 +354,7 @@ server <- function(input, output, session) {
         perc = n / sum(n),
         label = paste0(round(perc * 100, 1), "%")
       )
-      
+    
     
     plot_ly(gender_df, 
             labels = ~gender, 
@@ -360,7 +374,7 @@ server <- function(input, output, session) {
   # Age
   output$plot_age <- renderPlotly({
     req(input$selected_organ)
-    df <- get_cancer_data(input$selected_organ)
+    df <- get_merged_data(input$selected_organ)
     req(df)
     
     breaks <- c(0, 50, 60, 70, 80, 120)
@@ -446,7 +460,7 @@ server <- function(input, output, session) {
     "limma-voom" = "#7C75C4", 
     "limma-trend" = "#E3B4C2"
   )
-
+  
   # ROC Curve (sensitivity vs. 1-specificity)
   output$bench_plot_roc <- renderPlotly({
     res_obj <- benchmark_res()
@@ -523,7 +537,7 @@ server <- function(input, output, session) {
     req(res_obj)
     
     df <- res_obj$result_df
-
+    
     summ_lfc <- df %>%
       group_by(method, LFC) %>%
       summarise(
@@ -556,7 +570,7 @@ server <- function(input, output, session) {
     pct_sim <- input$de_pct        
     phi_sim <- input$dispersion
     
-    bg_data <- get_cancer_expr(input$cancer_type_de)
+    bg_data <- get_expr_log(input$cancer_type_de)
     bg_data <- bg_data[1:500, , drop = FALSE]
     
     withProgress(message = "Running Benchmark...", value = 0, {
@@ -663,87 +677,58 @@ server <- function(input, output, session) {
       sim_details = sim_obj
     )
   }) 
-
+  
   # Survival Analysis
   sim_ready <- reactiveVal(FALSE)
   
-  clean_df_surv_event <- eventReactive(input$run_sim, {
-    cancer_type <- isolate(input$cancer_type_surv)
-    gene <- isolate(input$selected_gene)
+  observeEvent(input$cancer_type_surv, {
+    valid_genes <- get_gene_list(input$cancer_type_surv)
     
-    obj <- get_cancer_object(cancer_type)
-    req(obj)
-    
-    df <- obj$merged_data
-    req(df)
-    
-    req(all(c("tissue_status", "patient_id", "time",
-              "event", "age", "gender") %in% colnames(df)))
-    req(gene %in% colnames(df))
-    
-    df %>%
-      filter(tissue_status == "Primary Tumor") %>%
-      dplyr::select(
-        patient_id, time, event, age, gender,
-        Gene_Expression = all_of(gene)
-      ) %>%
-      mutate(
-        event = dplyr::case_when(
-          event == "Dead"  ~ 1,
-          event == "Alive" ~ 0,
-          TRUE ~ NA_real_
-        ),
-        gender = as.factor(gender),
-        time = as.numeric(time),
-        age = as.numeric(age)
-      ) %>%
-      na.omit()
+    updateSelectizeInput(
+      session = session,
+      inputId = "selected_gene",
+      choices = valid_genes,
+      selected = valid_genes[1],
+      server = TRUE
+    )
   })
   
-  rsf_fit_event <- eventReactive(input$run_sim, {
-    clean_df <- clean_df_surv_event()
-    set.seed(123)
-    rfsrc(
+  surv_analysis <- eventReactive(input$run_sim, {
+    
+    clean_df <- get_surv_df(input$cancer_type_surv)
+    gene_col <- input$selected_gene
+    clean_df$Gene_Expression <- suppressWarnings(as.numeric(clean_df[[gene_col]]))
+    
+    # fit RSF
+    rsf_fit <- rfsrc(
       Surv(time, event) ~ age + gender + Gene_Expression,
       data = clean_df,
       ntree = 200,
-      importance = TRUE
+      nodesize = 15,
+      importance = FALSE
     )
-  })
-  
-  sim_res_event <- eventReactive(input$run_sim, {
-    rsf_fit <- rsf_fit_event()
-    clean_df <- clean_df_surv_event()
     
-    gender_input <- isolate(input$gender_input)
-    age_input <- isolate(input$age_input)
-    expr_treated <- isolate(input$expr_treated)
-    
-    expr_baseline <- median(
-      clean_df$Gene_Expression[clean_df$gender == gender_input],
-      na.rm = TRUE
-    )
-    if (is.na(expr_baseline)) {
-      expr_baseline <- median(clean_df$Gene_Expression, na.rm = TRUE)
-    }
-    
-    res <- simulate_gene_effect(
+    # run simulation
+    out <- simulate_gene_effect(
       rsf_fit = rsf_fit,
       clean_df = clean_df,
-      age_input = age_input,
-      gender_input = gender_input,
-      expr_baseline = expr_baseline,
-      expr_treated = expr_treated,
-      N = 500,
+      age_input = input$age_input,
+      gender_input = input$gender_input,
+      expr_baseline = median(clean_df$Gene_Expression),
+      expr_treated = input$expr_treated,
+      N = 200,               
       years = c(3, 5, 10),
-      expr_sd = 5.0
+      expr_sd = 5
     )
     
-    sim_ready(TRUE)
-    res
+    # free memory
+    rm(rsf_fit, clean_df); gc()
+    
+    return(out)
   })
   
-
+  
+  
   output$surv_curv_ui <- renderUI({
     if (input$run_sim == 0) {
       div(
@@ -795,7 +780,7 @@ server <- function(input, output, session) {
   
   # Plots
   output$surv_curv <- renderPlotly({
-    res <- sim_res_event()
+    res <- surv_analysis()
     req(res)
     
     scenario_cols <- c(
@@ -804,7 +789,7 @@ server <- function(input, output, session) {
     )
     
     p <- ggplot(res$avg_curve_df,
-      aes(x = time, y = mean, colour = scenario, fill = scenario)) +
+                aes(x = time, y = mean, colour = scenario, fill = scenario)) +
       geom_ribbon(aes(ymin = lower, ymax = upper),
                   alpha = 0.35, show.legend = FALSE) +
       geom_line(linewidth = 1.2) +
@@ -818,7 +803,7 @@ server <- function(input, output, session) {
   })
   
   output$surv_gain <- renderPlotly({
-    res <- sim_res_event()
+    res <- surv_analysis()
     req(res)
     
     plot_df <- res$delta_hist_df %>%
@@ -840,13 +825,12 @@ server <- function(input, output, session) {
     
     ggplotly(p)
   })
-
+  
   
   # Download Data
   merged_data_reactive <- reactive({
-    req(input$cancer_type_dl) 
-    obj <- get_cancer_object(input$cancer_type_dl)
-    return(obj$merged_data)
+    req(input$cancer_type_dl)
+    get_merged_data(input$cancer_type_dl)
   })
   
   output$dl_data_preview <- renderTable({
