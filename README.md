@@ -6,15 +6,25 @@ Exploration
 
 **Date:** 2025-12-06
 
-<p align="center">
+<div align="center">
 
 <img src="www/user_interface.png" alt="UI of OncoExploreR" width="700"><br>
 <em>Project website:
 <a href="https://lke-klh.shinyapps.io/OncoExploreR/">
 https://lke-klh.shinyapps.io/OncoExploreR/</a></em>
-</p>
+</div>
 
-# 1. Overview 🌟
+## Table of Contents
+
+> <a href="#1-overview-">1. Overview</a><br>
+> <a href="#2-application-components-">2. Application Components</a><br>
+> <a href="#3-methodology-">3. Methodology</a><br>
+> <a href="#4-installation-">4. Installation</a><br>
+> <a href="#5-acknowledgments-">5. Acknowledge</a><br>
+
+</br>
+
+## 1. Overview 🌟
 
 OncoExploreR (Oncology Explorer) is an interactive Shiny application
 designed to help users explore cancer genomics data from The Cancer
@@ -52,13 +62,13 @@ OncoExploreR:
 | Liver             | Liver Hepatocellular Carcinoma (LIHC)    |
 | Thyroid           | Thyroid Carcinoma (THCA)                 |
 
-# 2. Application Components 🧩
+## 2. Application Components 🧩
 
 The application is structured into four distinct functional modules:
 Body Map Explorer, DE Gene Detection Benchmark, Survival Analysis, and
 Data Access.
 
-## 2.1 Body Map Explorer 🩻
+### 2.1 Body Map Explorer 🩻
 
 This module provides a visual and intuitive starting point for
 exploratory data analysis. Users start with an interactive human body
@@ -74,7 +84,7 @@ This component is designed to help users situate each cancer in its
 anatomical and population context before moving to more technical
 analyses.
 
-## 2.2 DE Gene Detection Benchmark 🧬
+### 2.2 DE Gene Detection Benchmark 🧬
 
 This module allows users to simulate differential expression scenarios
 and benchmark the performance of four popular DE gene detection methods:
@@ -86,7 +96,7 @@ Each simulated dataset is analyzed by all four methods, and the
 application reports 3 plots to help users evaluate model performances:
 ROC curves, Sensitivity–FDR trade-offs and Sensitivity vs logFC.
 
-## 2.3 Survival Analysis 📉
+### 2.3 Survival Analysis 📉
 
 This module uses TCGA primary tumor samples to study how gene expression
 and clinical factors relate to predicted survival.
@@ -105,7 +115,7 @@ baseline vs treatment, with shaded ribbons reflecting confidence
 intervals gained by simulation; the other is the distribution of
 survival probability differences at 3, 5, and 10 years.
 
-## 2.4 Data Access 🗃️
+### 2.4 Data Access 🗃️
 
 To facilitate reproducible research, OncoExploreR provides a data
 download panel that exposes the processed datasets used in the
@@ -113,9 +123,9 @@ application. Users can download integrated tables containing clinical
 metadata, survival data, and gene expression matrices for all six
 supported cancer types.
 
-# 3. Methodology 🔬
+## 3. Methodology 🔬
 
-## 3.1 Differential Expression Modeling and Simulation 🔢
+### 3.1 Differential Expression Modeling and Simulation 🔢
 
 To simulate differential expression scenarios, we model raw counts using
 a Negative Binomial (NB) distribution:
@@ -161,7 +171,7 @@ The benchmark evaluates four widely used DE tools:
 Each method returns statistics, p-values, and adjusted p-values for
 every gene.
 
-## 3.2 Survival Analysis with Random Survival Forests ⏳
+### 3.2 Survival Analysis with Random Survival Forests ⏳
 
 To model patient-level outcomes, we fit a Random Survival Forest on TCGA
 primary tumor samples using clinical variables and a selected gene:
@@ -193,26 +203,26 @@ This simulation framework illustrates the expected improvement in
 survival probability given altered gene expression, while incorporating
 cross-patient variability.
 
-# 4. Installation 🚀
+## 4. Installation 🚀
 
-## 4.1 Use the Online Version 🌐
+### 4.1 Use the Online Version 🌐
 
 You can directly access the app via the deployed Shiny server:
 
     https://lke-klh.shinyapps.io/OncoExploreR/
 
-## 4.2 Run Locally 🖥️
+### 4.2 Run Locally 🖥️
 
-### Step 1 - Clone the repository
+#### Step 1 - Clone the repository
 
 In your terminal:
 
 ``` bash
-git clone https://github.com/Ziyi-Ou/OncoExploreR.git
+git clone https://github.com/lke-klh/OncoExploreR.git
 cd OncoExploreR
 ```
 
-### Step 2 — Restore the environment
+#### Step 2 — Restore the environment
 
 Open R / RStudio inside the project directory:
 
@@ -234,22 +244,58 @@ install.packages(c(
 ))
 ```
 
-### Step 3 — Run the Shiny App
+#### Step 3 - Access the Data 
+
+1. Download the required datasets from the <a href="https://xenabrowser.net/datapages/">UCSC Xena Browser</a>.
+  * For each cancer type, we used three datasets:
+      * star_counts (gene expression)
+      * survival
+      * clinical
+2. Run the data integration script:
+```bash
+Rscript data_processing.R
+```
+3. Create a folder for the processed outputs and move the integrated files into it:
+```bash
+mkdir -p top2000
+```
+
+After processing, your folder structure should look like this:
+```
+project-root/
+├─ top2000/
+│  ├─ TCGA_BRCA_merged_2000genes.csv
+│  ├─ TCGA_COAD_merged_2000genes.csv
+│  ├─ TCGA_KIRC_merged_2000genes.csv
+│  ├─ TCGA_LIHC_merged_2000genes.csv
+│  ├─ TCGA_LUAD_merged_2000genes.csv
+│  └─ TCGA_THCA_merged_2000genes.csv
+├─ data_processing.R
+├─ global.R
+├─ server.R
+├─ ui.R
+└─ ...
+```
+
+#### Step 4 — Run the Shiny App
 
 ``` r
 library(shiny)
 shiny::runApp(".")
 ```
 
-# 5. Acknowledgments 💡
+## 5. Acknowledgments 💡
 
 We gratefully acknowledge the publicly available genomic data resources and open-source software that made this project possible.
 
-### Data Resources
-- **TCGA**: The Cancer Genome Atlas (https://portal.gdc.cancer.gov/)
-- **UCSC Xena Browser**: (https://xenabrowser.net/datapages/)
+#### Data Resources
+<ul>
+  <li><a href="https://portal.gdc.cancer.gov/"><strong>TCGA</strong></a>: The Cancer Genome Atlas</li>
+  <li><a href="https://xenabrowser.net/datapages/"><strong>UCSC Xena Browser</strong></a></li>
+</ul>
 
-### Key References
+
+#### Key References
 
 - Feng, H., Meng, G., Lin, T., Parikh, H., Pan, Y., Li, Z., ... & Li, Q. (2023). *Islet: individual-specific reference panel recovery improves cell-type-specific inference.* Genome Biology, 24(1), 174.
 
@@ -265,17 +311,19 @@ We gratefully acknowledge the publicly available genomic data resources and open
 
 - Robinson, M. D., McCarthy, D. J., & Smyth, G. K. (2010). *edgeR: a Bioconductor package for differential expression analysis of digital gene expression data.* Bioinformatics, 26(1), 139-140.
 
-### Software and R Packages
+#### Software and R Packages
 
 We used multiple open-source R packages to conduct statistical analysis, develop the user interface, and evaluate model performance, including:
 
-- **DESeq2**: https://bioconductor.org/packages/DESeq2  
-- **edgeR**: https://bioconductor.org/packages/edgeR  
-- **limma**: https://bioconductor.org/packages/release/bioc/html/limma.html  
-- **randomForestSRC**: https://cran.r-project.org/package=randomForestSRC  
-- **shiny**: https://cran.r-project.org/web/packages/shiny/index.html  
-- **pROC**: https://cran.r-project.org/package=pROC  
-- **tidyverse**: https://www.tidyverse.org/packages/  
+<ul>
+  <li><a href="https://bioconductor.org/packages/DESeq2"><strong>DESeq2</strong></a></li>
+  <li><a href="https://bioconductor.org/packages/edgeR"><strong>edgeR</strong></a></li>
+  <li><a href="https://bioconductor.org/packages/release/bioc/html/limma.html"><strong>limma</strong></a></li>
+  <li><a href="https://cran.r-project.org/package=randomForestSRC"><strong>randomForestSRC</strong></a></li>
+  <li><a href="https://cran.r-project.org/web/packages/shiny/index.html"><strong>shiny</strong></a></li>
+  <li><a href="https://cran.r-project.org/package=pROC"><strong>pROC</strong></a></li>
+  <li><a href="https://www.tidyverse.org/packages/"><strong>tidyverse</strong></a></li>
+</ul>
 
 We sincerely thank the authors and developers of these tools for their contributions to open science and computational biology.
 
